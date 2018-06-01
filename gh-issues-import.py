@@ -310,6 +310,12 @@ def patch_issue(which, issue_number, issue_payload):
 	result = send_request(which, 'issues/{number}'.format(number=issue_number), issue_payload, method='PATCH')
 	return result
 
+def pull_request(which, issue_number, head_branch, base_branch):
+	'''Create a pull request referencing an existing issue.
+	See https://developer.github.com/v3/pulls/#alternative-input'''
+	result = send_request(which, 'pulls', {"issue": issue_number, "head": head_branch, "base": base_branch})
+	return result
+
 # Will only import milestones and issues that are in use by the imported issues, and do not exist in the target repository
 def import_issues(issues):
 
@@ -435,6 +441,9 @@ def import_issues(issues):
 		if issue['id'] in closed_issue_ids:
 			issue['state'] = 'closed'
 			patch_issue('target', result_issue['number'], issue)
+		if issue['id'] in pull_request_ids:
+			#pull_request('target', result_issue['number'])
+			pass # don't have required arguments: head, base
 
 		if 'comments' in issue:
 			result_comments = import_comments(issue['comments'], result_issue['number'])
