@@ -31,6 +31,8 @@ http_error_messages[401] = "ERROR: There was a problem during authentication.\nD
 http_error_messages[403] = http_error_messages[401]; # Basically the same problem. GitHub returns 403 instead to prevent abuse.
 http_error_messages[404] = "ERROR: Unable to find the specified repository.\nDouble check the spelling for the source and target repositories. If either repository is private, make sure the specified user is allowed access to it."
 
+old_issue_nums_to_ids = {} # {old_issue_num: old_issue_id}
+old_issue_ids_to_new_issue_nums = {} # {old_issue_id: new_issue_num}
 
 def init_config():
 
@@ -258,6 +260,18 @@ def get_issues_by_state(which, state):
 		page += 1
 	return issues
 
+# Allowed values for state are 'open' and 'closed'
+def get_pull_requests_by_state(which, state):
+	pulls = []
+	page = 1
+	while True:
+		new_pulls = send_request(which, "pulls?state=%s&direction=asc&page=%d" % (state, page))
+		if not new_pulls:
+			break
+		pulls.extend(new_pulls)
+		page += 1
+	return pulls
+
 def get_comments_on_issue(which, issue):
 	if issue['comments'] != 0:
 		return send_request(which, "issues/%s/comments" % issue['number'])
@@ -310,10 +324,19 @@ def patch_issue(which, issue_number, issue_payload):
 	result = send_request(which, 'issues/{number}'.format(number=issue_number), issue_payload, method='PATCH')
 	return result
 
-def pull_request(which, issue_number, head_branch, base_branch):
+def create_pull_request(which, issue_number, head_branch, base_branch, state=None):
 	'''Create a pull request referencing an existing issue.
 	See https://developer.github.com/v3/pulls/#alternative-input'''
 	result = send_request(which, 'pulls', {"issue": issue_number, "head": head_branch, "base": base_branch})
+
+	if state == 'closed':
+		patch_pull_request(which, result['number'], {"state": state})
+
+	return result
+
+def patch_pull_request(which, pull_number, pull_payload):
+	'''Edit an existing pull request, see https://developer.github.com/v3/pulls/#update-a-pull-request'''
+	result = send_request(which, 'pulls/{number}'.format(number=pull_number), pull_payload, method='PATCH')
 	return result
 
 # Will only import milestones and issues that are in use by the imported issues, and do not exist in the target repository
@@ -397,6 +420,7 @@ def import_issues(issues):
 			open_issue_ids.append(issue['id'])
 		elif issue['state'] == 'closed':
 			closed_issue_ids.append(issue['id'])
+		old_issue_nums_to_ids[issue['number']] = issue['id']
 
 		new_issues.append(new_issue)
 
@@ -450,11 +474,38 @@ def import_issues(issues):
 			print(" > Successfully added", len(result_comments), "comments.")
 
 		result_issues.append(result_issue)
+		old_issue_ids_to_new_issue_nums[issue['id']] = result_issue['number']
 
 	state.current = state.IMPORT_COMPLETE
 
 	return result_issues
 
+def pull_request_issue_number(pull_request):
+	num = None
+	if 'issue_url' in pull_request:
+	 	num = pull_request['issue_url'].split('/')[-1] # last part of the url
+	return num
+
+def get_new_issue_number(old_issue_num):
+	num = None
+	if old_issue_num in old_issue_nums_to_ids:
+		old_id = old_issue_nums_to_ids[old_issue_num]
+		num = old_issue_ids_to_new_issue_nums[old_id]
+	return num
+
+# Will only import pull requests whose linked issues are also imported
+def import_pull_requests():
+	pull_requests = []
+	if config.getboolean('settings', 'import-open-issues'):
+		pull_requests += get_pull_requests_by_state('source', 'open')
+
+	if config.getboolean('settings', 'import-closed-issues'):
+		pull_requests += get_pull_requests_by_state('source', 'closed')
+
+	for pull in pull_requests:
+		old_issue_num = pull_request_issue_number(pull)
+		new_issue_num = get_new_issue_number(old_issue_num)
+		create_pull_request('target', new_issue_num, pull['head']['ref'], pull['base']['ref'], state=pull['state'])
 
 if __name__ == '__main__':
 
@@ -482,5 +533,6 @@ if __name__ == '__main__':
 	# Further states defined within the function
 	# Finally, add these issues to the target repository
 	import_issues(issues)
+	import_pull_requests()
 
 	state.current = state.COMPLETE
