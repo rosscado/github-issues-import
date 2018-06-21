@@ -533,6 +533,7 @@ if __name__ == '__main__':
 	# Further states defined within the function
 	# Finally, add these issues to the target repository
 	import_issues(issues)
-	import_pull_requests()
+	if config.getboolean('settings', 'import-pulls'):
+		import_pull_requests()
 
 	state.current = state.COMPLETE
