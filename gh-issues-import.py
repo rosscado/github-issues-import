@@ -222,6 +222,7 @@ def send_request(which, url, post_data=None, method=None):
 			sys.exit(http_error_messages[error.code])
 		else:
 			error_message = "ERROR: There was a problem importing the issues.\n%s %s" % (error.code, error.reason)
+			error_message = "%s.\nURL: %s %s" % (error_message, req.get_method(), req.get_full_url())
 			if 'message' in error_details:
 				error_message += "\nDETAILS: " + error_details['message']
 			sys.exit(error_message)
