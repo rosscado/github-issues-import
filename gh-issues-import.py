@@ -236,7 +236,15 @@ def get_milestones(which):
 	return send_request(which, "milestones?state=all")
 
 def get_labels(which):
-	return send_request(which, "labels")
+	labels = []
+	page = 1
+	while True:
+		more_labels = send_request(which, "labels?page=%s" % (page))
+		if not more_labels:
+			break
+		labels.extend(more_labels)
+		page += 1
+	return labels
 
 def get_issue_by_id(which, issue_id):
 	return send_request(which, "issues/%d" % issue_id)
